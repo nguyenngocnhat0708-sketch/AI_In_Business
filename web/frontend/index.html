@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vietnam Air Quality - Dashboard Dự Báo Nguy Cơ Hô Hấp (T+3)</title>
+  
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet CSS for Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <!-- Header / Navigation -->
+  <header class="header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Vietnam Air Quality Forecast</h1>
+          <p class="brand-subtitle">Hệ thống dự báo nguy cơ hô hấp T+3 cho 63 tỉnh/thành phố</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Status Indicator -->
+        <div id="connectionStatus" class="status-pill status-loading">
+          <span class="status-dot"></span>
+          <span id="statusText">Đang kết nối...</span>
+        </div>
+
+        <!-- Timestamp info -->
+        <div class="time-badge">
+          <div class="time-item">
+            <span class="time-label">Thời điểm đo (T):</span>
+            <span id="dataTimeDisplay" class="time-value">--:-- --/--/----</span>
+          </div>
+          <div class="time-item highlight">
+            <span class="time-label">Dự báo cho (T+3h):</span>
+            <span id="predTimeDisplay" class="time-value">--:-- --/--/----</span>
+          </div>
+        </div>
+
+        <!-- Refresh button -->
+        <button id="refreshBtn" class="btn btn-primary" title="Làm mới dữ liệu từ Hugging Face">
+          <svg class="icon-refresh" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-1.19"/>
+          </svg>
+          <span class="btn-text">Làm mới</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Notification Banner -->
+  <div id="alertBanner" class="alert-banner hidden">
+    <div class="alert-content">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <span id="alertMessage">Thông báo trạng thái hệ thống</span>
+    </div>
+    <button id="closeAlertBtn" class="btn-close">&times;</button>
+  </div>
+
+  <!-- Main Container -->
+  <main class="main-container">
+
+    <!-- KPI Summary Cards -->
+    <section class="kpi-grid">
+      <!-- Total Cities -->
+      <div class="kpi-card card-total">
+        <div class="kpi-header">
+          <span class="kpi-title">Tổng số tỉnh/thành</span>
+          <div class="kpi-icon icon-blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpiTotalCities">--</div>
+        <div class="kpi-sub" id="kpiTotalSub">Phạm vi: Toàn quốc Việt Nam</div>
+      </div>
+
+      <!-- Risk 0: Thấp -->
+      <div class="kpi-card card-low">
+        <div class="kpi-header">
+          <span class="kpi-title">Mức rủi ro: Thấp</span>
+          <span class="badge badge-low">Mức 0</span>
+        </div>
+        <div class="kpi-value text-low" id="kpiRiskLow">--</div>
+        <div class="kpi-sub" id="kpiRiskLowPct">Chiếm --% số địa điểm</div>
+      </div>
+
+      <!-- Risk 1: Trung bình -->
+      <div class="kpi-card card-med">
+        <div class="kpi-header">
+          <span class="kpi-title">Mức rủi ro: Trung bình</span>
+          <span class="badge badge-med">Mức 1</span>
+        </div>
+        <div class="kpi-value text-med" id="kpiRiskMed">--</div>
+        <div class="kpi-sub" id="kpiRiskMedPct">Chiếm --% số địa điểm</div>
+      </div>
+
+      <!-- Risk 2 & 3: Cao & Rất cao -->
+      <div class="kpi-card card-high">
+        <div class="kpi-header">
+          <span class="kpi-title">Rủi ro: Cao & Rất cao</span>
+          <span class="badge badge-high">Mức 2-3</span>
+        </div>
+        <div class="kpi-value text-high" id="kpiRiskHigh">--</div>
+        <div class="kpi-sub" id="kpiRiskHighBreakdown">Cao: -- | Rất cao: --</div>
+      </div>
+    </section>
+
+    <!-- Visual Dashboard: Map & Chart -->
+    <section class="visual-section">
+      <!-- Vietnam Map (Left 60%) -->
+      <div class="card map-card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">Bản Đồ Nguy Cơ 63 Tỉnh/Thành</h2>
+            <p class="card-subtitle">Nhấp vào từng điểm để xem dự báo chi tiết và xác suất</p>
+          </div>
+          <div class="map-controls">
+            <button id="resetMapBtn" class="btn btn-secondary btn-sm">Về trung tâm</button>
+          </div>
+        </div>
+        
+        <div id="vietnamMap" class="map-container"></div>
+        
+        <div class="map-legend">
+          <span class="legend-title">Mức rủi ro:</span>
+          <div class="legend-item"><span class="legend-dot dot-low"></span> Thấp (0)</div>
+          <div class="legend-item"><span class="legend-dot dot-med"></span> Trung bình (1)</div>
+          <div class="legend-item"><span class="legend-dot dot-high"></span> Cao (2)</div>
+          <div class="legend-item"><span class="legend-dot dot-very-high"></span> Rất cao (3)</div>
+        </div>
+      </div>
+
+      <!-- Analytics & Region Breakdown (Right 40%) -->
+      <div class="analytics-column">
+        <!-- Distribution Chart -->
+        <div class="card chart-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Phân Bố Toàn Quốc</h2>
+              <p class="card-subtitle">Tỷ lệ các mức rủi ro sau 3 giờ</p>
+            </div>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="riskDistributionChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Regional Stats -->
+        <div class="card region-card">
+          <div class="card-header">
+            <h2 class="card-title">Phân Bố Theo Vùng Miền</h2>
+          </div>
+          <div class="region-stats-grid" id="regionStatsContainer">
+            <!-- Region stats dynamically populated -->
+            <div class="region-item skeleton">Đang nạp dữ liệu vùng...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Data Explorer Table Section -->
+    <section class="card table-card">
+      <div class="card-header table-card-header">
+        <div>
+          <h2 class="card-title">Danh Sách Dự Báo Chi Tiết</h2>
+          <p class="card-subtitle">Hiển thị thông tin dự báo T+3 và phân phối xác suất</p>
+        </div>
+        <div class="table-meta">
+          <span id="filteredCount">Đang hiển thị 0/0 tỉnh/thành</span>
+        </div>
+      </div>
+
+      <!-- Filter & Search Toolbar -->
+      <div class="filter-toolbar">
+        <div class="search-box">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="searchInput" placeholder="Tìm kiếm tỉnh/thành phố...">
+          <button id="clearSearchBtn" class="btn-clear hidden">&times;</button>
+        </div>
+
+        <div class="filter-controls">
+          <!-- Region Filter -->
+          <div class="select-wrapper">
+            <label for="regionFilter">Vùng miền:</label>
+            <select id="regionFilter">
+              <option value="ALL">Tất cả các miền</option>
+              <option value="Mien_Bac">Miền Bắc</option>
+              <option value="Mien_Trung">Miền Trung & Tây Nguyên</option>
+              <option value="Mien_Nam">Miền Nam</option>
+            </select>
+          </div>
+
+          <!-- Risk Level Filter -->
+          <div class="select-wrapper">
+            <label for="riskFilter">Mức rủi ro:</label>
+            <select id="riskFilter">
+              <option value="ALL">Tất cả các mức</option>
+              <option value="0">Thấp (0)</option>
+              <option value="1">Trung bình (1)</option>
+              <option value="2">Cao (2)</option>
+              <option value="3">Rất cao (3)</option>
+            </select>
+          </div>
+
+          <!-- Sort Order -->
+          <div class="select-wrapper">
+            <label for="sortOrder">Sắp xếp:</label>
+            <select id="sortOrder">
+              <option value="risk_desc">Mức rủi ro: Cao &rarr; Thấp</option>
+              <option value="risk_asc">Mức rủi ro: Thấp &rarr; Cao</option>
+              <option value="name_asc">Tên tỉnh: A &rarr; Z</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Table View -->
+      <div class="table-responsive">
+        <table class="data-table" id="predictionsTable">
+          <thead>
+            <tr>
+              <th>Tỉnh / Thành Phố</th>
+              <th>Vùng Miền</th>
+              <th>Mức Rủi Ro (T+3)</th>
+              <th title="Xác suất mức Thấp">P(Thấp)</th>
+              <th title="Xác suất mức Trung bình">P(TB)</th>
+              <th title="Xác suất mức Cao">P(Cao)</th>
+              <th title="Xác suất mức Rất cao">P(Rất cao)</th>
+              <th>Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr>
+              <td colspan="8" class="text-center loading-cell">Đang tải dữ liệu...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-left">
+        <strong>Vietnam Air Quality Forecasting System</strong> &copy; 2026.
+        Mô hình dự báo CatBoost Classifier với 33 đặc trưng khí tượng & chất ô nhiễm.
+      </div>
+      <div class="footer-right">
+        Dữ liệu nguồn: Open-Meteo API | Pipeline tự động hóa hàng giờ qua GitHub Actions.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Setup Guidance Modal (Hiển thị khi chưa cấu hình HF) -->
+  <div id="setupModal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Hướng Dẫn Cấu Hình Hệ Thống</h3>
+        <button id="closeModalBtn" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Hệ thống Backend đang chưa kết nối được với kho dữ liệu trên <strong>Hugging Face Hub</strong>.</p>
+        <p>Để nhận dữ liệu dự báo tự động thời gian thực từ pipeline AI, vui lòng bổ sung thông tin vào file <code>.env</code> trong thư mục dự án:</p>
+        <pre><code># File .env
+HF_DATASET_REPO=&lt;username&gt;/&lt;dataset_name&gt;
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx
+CACHE_TTL_SECONDS=300</code></pre>
+        <p class="modal-note">Sau khi lưu file <code>.env</code>, bạn chỉ cần bấm nút <strong>"Làm mới"</strong> trên Header để nạp dữ liệu trực tiếp.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="understandBtn" class="btn btn-primary">Đã hiểu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Application Logic -->
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
+
